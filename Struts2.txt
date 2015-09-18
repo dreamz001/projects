@@ -1,0 +1,405 @@
+STRUTS 2
+--------
+1) Value of USER bean stored in session:
+	Last logged in on <s:property value="%{#session.USER.lastloggedin}" />
+	
+2) Value of List<PayerDetailsBean> stored in context(application):	
+	<s:select name="sourceIdentificationCode" label="Payer Name" required="true" headerKey="-1" headerValue="Select Payer Name"
+        list="%{#application.PAYERINFOLIST}" listKey="sourceidentificationcode" listValue="sourcename"/>
+		where 'sourceIdentificationCode'(property be to set)
+			  'PAYERINFOLIST'(attribute name of List<PayerDetailsBean> in context)
+			  'sourceidentificationcode'(property of PayerDetailsBean)(this selected value will be given to 'sourceIdentificationCode')
+			  'sourcename'(property of PayerDetailsBean)(this list value will be shown in s:select box)
+			  
+3)  Adding calender(datepicker) in jsp
+#include the taglib
+	<%@ taglib prefix="sj" uri="/struts-jquery-tags" %>
+#load the taglib
+	<sj:head />	
+#insert the datepicker	
+	<sj:datepicker name="primaryInsuredDemographicsDateOfBirth" label="Insured DOB" changeMonth="true" changeYear="true"
+		displayFormat="yymmdd" yearRange="-65:+00"/>	
+			'yearRange="-65:+00"' minyear=current year-65 and maxyear=current year
+			'displayFormat="yymmdd"' 19771120(yy give 1977)
+
+4)	Using ModelDriven
+# implements ModelDriven<PayerDetails> in ActionClass
+# create an object of PayerDetails;
+		 private PayerDetails payer;
+# add unimplemented ModelDriven method and override
+	@Override
+		public PayerDetails getModel() {
+			if (this.payer == null) {
+				payer = new PayerDetails();
+			}
+			return payer;
+		}		 
+ 			
+5) Emptying the text fields after successfully redirected to same page(reloading the page)(using modelDriven)
+			afterDoingAllImportantWork();
+			this.payer = new PayerDetails();		// create a new payerdetails object and assign it to this.payer
+            ActionContext.getContext().getValueStack().push(payer);		// push the new payer to ValueStack	
+			
+6) Implement AJAX
+# In ActionClass, Add JSONObject and HttpServletResponse
+		 public String getpayerdetails() {
+				JSONObject obj = new JSONObject();
+				HttpServletResponse response = ServletActionContext.getResponse();		// Get the response obj
+				try {
+					String payerId = ServletActionContext.getRequest().getParameter("payercode");	// get the request parameter obj
+					if (payerId != null) {
+						payer = userService.getPayerDetails(payerId);				// get data from database
+						if (payer != null) {
+							Map<String, String> payerDetails = new HashMap<String, String>();	//creating the map object
+							payerDetails.put("PAYERNAME", payer.getSourcename().trim());				// putting data with key
+							payerDetails.put("PAYERCODE", payer.getSourceidentificationcode().trim());
+							obj.put("PAYERDETAILS", payerDetails);				// storing map object to jsonobject
+						}
+					}
+				} catch (Exception e) {					
+				}
+				try {
+					response.getWriter().write(obj.toString());				// writing jsonobject to response
+				} catch (IOException e) {
+				}
+				return NONE;											// returning NONE as we don't want to redirect the user 
+			}
+
+# In struts.xml	(use extends="json-default" if in jsp we use struts-dojo plugin and in head <sx:head/>)
+		<package name="processAJAX" namespace="/" extends="struts-default">
+			<action name="getpayerdetails" method="getpayerdetails" class="com.ayniwebutility.actions.UpdatePayerAction">
+			</action>
+		</package>
+		
+# In JSP page:
+AJAX CODE:
+	<script type="text/javascript">
+					$(document).ready(					// in document.ready
+							function() {
+								showpayerselect(false);	// we are calling some functions
+								payerDisabled(true);
+							});
+		function getPayerDetailsByIdAjax(payercode) {	// AJAX function starts here
+								if(payercode=='-1'){		// checking if no value selected or "Select Payer"(default) selected
+									$('#updatepayerformid')[0].reset();		// resets the form
+									return false;
+									}
+								$.ajax({								// calling ajax
+									url : '/WebEligibility/getpayerdetails?payercode=' + payercode,		// url with parameters
+									method : 'GET',														// GET or POST method
+									success : function(data) {											// if success then all data is in data
+										var jsonobj = JSON.parse(data);									// parseing the json data
+										$("#inputpayernameid").val(jsonobj.PAYERDETAILS.PAYERNAME);		// setting the inputpayernameid textfield value
+										$("#inputpayerid").val(jsonobj.PAYERDETAILS.PAYERCODE);				// from the map.key PAYERDETAILS.PAYERCODE
+									}
+								});
+							}
+	</script>		
+			
+STRUTS CODE:
+	<s:form action="updatepayerdetails" id="updatepayerformid" validate="true" theme="css_xhtml" >		
+			<s:select id="selectpayernameid" name="sourceIdentificationCode"  headerKey="-1" headerValue="Select Payer Name"
+                list="%{#application.PAYERINFOSET}" listKey="sourceidentificationcode" listValue="sourcename" onchange="getPayerDetailsByIdAjax(this.value)" />
+			
+			<s:textfield label="Payer Name" name="sourcename" id="inputpayernameid" />
+			<s:textfield label="Payer ID" name="newpayerid"  id="inputpayerid" />
+			
+			
+7)	Calling a AJAX call in intervals
+
+<script type="text/javascript">
+					var intervalId = 0;
+					intervalId = setInterval(crunchifyAjax, 500);		// calling function in intervals of 500 ms
+
+					function crunchifyAjax() {
+							$.ajax({
+									url : '/AyniWebUtility/processStatus',	// action url 
+									method : 'POST',						// GET or POST
+									success : function(data) {
+										var jsonobj = JSON.parse(data);		// Parsing json data 								
+										if (jsonobj['ACK_999_277_PROCESS_STATUS'] == "RUNNING"
+												|| jsonobj['ACK_999_277_PROCESS_STATUS'] == "START") {
+																			// if process start or running then
+											$("#ackediprocessid").hide();	 // hide this div
+											$("#ackediprocessidprogress").show();	// and show this div
+										} else {
+											$("#ackediprocessidprogress").hide();
+											$("#ackediprocessid").show();
+										}
+									}
+								});
+					}	
+
+8) For Numeric Keys(Numbers Only using javascript)
+		<s:textfield type="text" name="batchsize" onkeypress="if ( isNaN( String.fromCharCode(event.keyCode) )) return false;" />
+		
+9)	Checkbox pre-checked or not from session value
+STRUTS FORM
+		<s:set var="check" value="%{#session.CONFIGBATCHBYPROVIDER}" />				// we are setting a object(check)
+        <input type="checkbox" name="batchbyprovider" <s:if test="%{#check=='true'}">checked='checked'</s:if> id="providercheck" />
+                // and if check is 'true' then setting the 'checked' attribute of checkbox as 'checked'  
+				
+		OR
+				<s:set var="manageuser" value="%{#session.UPDATEUSER.manageuser}" />
+				<input type="checkbox" name="manageuser" <s:if test="%{#manageuser==true}">checked='checked'</s:if> id="manageuser" />
+                <label class="control-label label_new" for="manageuser">Manage User</label> 
+		OR
+				<input type="checkbox" name="managepayer" <s:if test="%{#session.UPDATEUSER.managepayer==true}">checked='checked'</s:if> id="managepayer" />
+                
+NOTE: Here we have set 'CONFIGBATCHBYPROVIDER' as string in java class therefore we are checking "{#check=='true'}"
+and in 'UPDATEUSER.manageuser' it is set as boolean so "{#manageuser==true}" 
+and we can directly check in <s:if> without declaring <s:set var> as in managepayer.				
+
+10) List of JAVA PROCESSES running 
+# In class: 
+			StringBuilder processList = new StringBuilder();
+            Process p = Runtime.getRuntime().exec("jps -l");		// JPS -L is for list of java processes
+            BufferedReader input = new BufferedReader(new InputStreamReader(p.getInputStream()));
+            String process = null;
+            while ((process = input.readLine()) != null) {
+                processList.append(process);						// this will append all java process 
+            }
+            input.close();				
+			if (processList.toString().contains("edi-837p-normalization.jar")) {
+            System.out.println("837p RUNNING ");					// if list contains "edi-837p-normalization.jar" then process is running
+			} else {
+            System.out.println("837p Not Running");
+			
+11) Multiple STRUTS form, have Different ActionMessages
+# In JSP Forms:
+			<s:form validate="true" action="batchconfig" theme="css_xhtml" cssClass="form-horizontal" method="post">
+				<s:if test="%{#session.FORM=='BATCH'}">
+                      <s:actionmessage  cssStyle="color: green; text-align: center;font-weight: 900;list-style-type: none;" />
+                </s:if>	
+
+			<s:form action="configureprocesspath" validate="true" theme="css_xhtml" cssClass="form-horizontal" method="post">
+                <s:if test="%{#session.FORM=='PROCESS'}">
+                        <s:actionmessage cssStyle="color: green; text-align: center;font-weight: 900;list-style-type: none;" />
+                </s:if>				
+# In ActionClass
+				addActionMessage("Process Records Updated Successfully");
+				ServletActionContext.getRequest().getSession().setAttribute("FORM", "PROCESS");
+				
+12) Change a button Text on event
+# FORM:
+			onclick="payersaveorupdatebutton('SAVE')"
+	OR		onclick="payersaveorupdatebutton('UPDATE')"
+# AJAX CODE:
+				function payersaveorupdatebutton(label) { 
+                    	$("#payersaveid").val(label);
+                    }
+13) Emptying a field value
+#AJAX CODE:
+                    function resetPayerId() { 
+                    	$("#payerid").val("");
+                    }	
+					
+14) Disabling fields on page load
+# In BODY Tag:
+		<body onload="payerDisabled(true)">
+# JAVASCRIPT CODE:
+		 <script type="text/javascript">
+					function payerDisabled(data) {
+						document.getElementById("selectpayernameid").disabled = data;
+						document.getElementById("inputpayernameid").disabled = data;
+						}
+		 </script>
+15) Creating TABS and after update opens the same TAB
+# Include JS Lib
+	<script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.1/jquery.min.js"></script>
+    <script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script> 	
+# JAVASCRIPT CODE(Jquery):
+			<script type="text/javascript">
+				$(document).ready(function() {
+					$("#tabs").tabs();			// Creating TABS
+					createTabs();				// for redirecting to current tab, calling the createTabs()
+				});
+				function createTabs() {
+					if (sessionStorage.tab == 1 ) {
+						sessionStorage.tab = 0;
+						$('#li-configration a').click();		// forces script to generate click event on <a> of "li-configration" id
+					} else {
+						$('#li-configration').removeClass('ui-state-active');
+						$('#li-configration').removeClass('ui-tabs-active');
+						$('#li-process').addClass('ui-tabs-active');
+						$('#li-process').addClass('ui-state-active');
+						$('#configurationtab').hide();
+						$('#processtab').show();
+					}
+				}
+				$(document).on('click', '#saveeditid', function() {
+					sessionStorage.tab = 1;			// on clicking SAVE, we update the current Tab in session as 1 
+				});									// and redirect to this tab
+				$(document).on('click', '#processsaveid', function() {
+					sessionStorage.tab = 1;
+				});
+				
+		 </script>	
+# In JSP: Creating Tabs
+			<div id="tabs">
+                        <ul class="nav nav-tabs">
+                            <li id="li-process"><a href="#processtab">Manage Processes</a></li>
+                            <li id="li-configration"><a href="#configurationtab">Configurations</a></li>
+                        </ul>
+				 <div id="processtab">This is Processes Tab</div>
+				 <div id="configurationtab">This is Configurations Tab</div>
+			</div>
+			
+16) Creating and Showing TABS IF PERMISSIONS 
+# Adding Libs
+	<link rel="stylesheet" href="//code.jquery.com/ui/1.11.4/themes/smoothness/jquery-ui.css">
+	<script src="//code.jquery.com/jquery-1.10.2.js"></script>
+	<script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+	<link href="http://ajax.googleapis.com/ajax/libs/jqueryui/1.8/themes/base/jquery-ui.css" rel="Stylesheet" type="text/css" />
+
+# In JSP	
+			<div id="tabs">
+                         <ul>
+                            <s:iterator value="%{#session.USER.userScreenmasterMap}">
+                                <s:if test="screenid.screenid==1">
+                                    <s:if test="ispermission==true">
+                                        <li><a href="#tabs-1">Dashboard</a></li>
+                                    </s:if>
+                                </s:if>
+                                <s:if test="screenid.screenid==2">
+                                    <s:if test="ispermission==true">
+                                        <li><a href="#tabs-2">Manage Payer</a></li>
+                                    </s:if>
+                                </s:if>
+                                <s:if test="screenid.screenid==3">
+                                    <s:if test="ispermission==true">
+                                        <li><a href="#tabs-3">Manage Provider</a></li>
+                                    </s:if>
+                                </s:if>                               
+                            </s:iterator>
+                        </ul>
+                    
+						<div id="tabs-1">
+							This is Dashboard Tab
+						 </div>
+                        <div id="tabs-2">
+                            <s:include value="updatepayers.jsp"></s:include>                            
+                        </div>
+                        <div id="tabs-3">
+                           <jsp:include page="updateproviders.jsp"></jsp:include>
+                        </div>
+            </div>  
+
+# In database
+UserTable		->	userid			
+ScreenTable		->	screenid	
+UserScreenMap	->	userid,screenid
+
+17)Fill select runtime
+#AJAX CODE
+function getConfigIdsAjax(id) {
+		$.ajax({
+			url : '/AyniWebUtility/getconfigids?clientid=' + id,
+			method : 'GET',
+			success : function(data) {
+				var jsonobj = JSON.parse(data);
+				var select = $("#sftpconfigid");
+				 $('#sftpformid')[0].reset();
+				 $('#sftpconfigid option[value!="-1"]').remove();
+                 $('#sftpclientid').val(id);
+				$.each(jsonobj.CONFIGIDS, function(key, value) {
+					$('<option>').val(key).text(value).appendTo(select);
+				});
+			}
+		});
+	}	 
+Hibernate:
+Exception::
+1) org.hibernate.StaleStateException: Batch update returned unexpected row count from update [0]; actual row count: 0; expected: 1			
+Ans: In the Hibernate mapping file for the id property, if you use any generator class, for that property you should not set the value explicitly by using a setter method.
+If you set the value of the Id property explicitly, it will lead the error above.	
+
+Spring:(From WebEligibility Project, Spring-3)
+________
+1). Autowiring is used to automatically create single instance of an class and used it in every class which has the autowired class instance.
+
+## In class:
+# For autowiring "IBaseDao baseDao" to "baseDao" of applicationContext.xml file.
+	@Autowired
+    IBaseDao baseDao;
+
+## In ApplicationContext.xml File
+# The whole package name to scan for the @Autowired annotation(files those have @Autowired annotations)
+	<context:component-scan base-package="com.ayniwebutility" />
+# For Using annotation	
+	<tx:annotation-driven transaction-manager="hibernateTransactionManager"/>
+
+# For autowiring(mapping) "baseDao" object in multiple classes.
+	<bean id="baseDao" class="com.eligibility.base.dao.impl.BaseDaoImpl" autowire-candidate="true">
+	
+2). DataSource for database connection configrations
+## In ApplicationContext.xml File
+
+<!-- Database Configuration Start here-->
+	<!-- setting database.properties file path -->
+	<context:property-placeholder location="classpath:database.properties"/>
+	<tx:annotation-driven transaction-manager="hibernateTransactionManager"/>
+    
+	<!-- setting "driverClassName" property from database.properties file key "database.driver" -->
+	<bean class="org.springframework.jdbc.datasource.DriverManagerDataSource" id="dataSource">
+	 	<property name="driverClassName" value="${database.driver}"></property>
+	 	<property name="url" value="${database.url}"></property>
+	 	<property name="username" value="${database.user}"></property>
+	 	<property name="password" value="${database.password}"></property>
+	</bean>
+    
+	<!-- scaning multiple packages those have java beans(Entities) that are mapped with database tables -->
+	<bean class="org.springframework.orm.hibernate3.annotation.AnnotationSessionFactoryBean" id="sessionFactory">
+		 <property name="dataSource" ref="dataSource"></property>
+		 <property name="packagesToScan">
+	  		<list>
+	   			<value>com.ayniwebutility.model</value>
+                <value>com.eligibility270.mastertables.entities</value>
+                <value>com.eligibility270.dbentities</value>                
+	 		 </list>
+	 	</property>
+		<!-- For single package -->
+        <!-- <property name="packagesToScan" value="com.ayniwebutility.model"/> -->
+		
+		<!-- Setting hibernate properties -->
+	 	<property name="hibernateProperties">
+			 <props>
+	  			<prop key="hibernate.dialect">org.hibernate.dialect.PostgreSQLDialect</prop>
+				  <prop key="hibernate.show_sql">${hibernate.show_sql}</prop>
+				  <prop key="hibernate.hbm2ddl.auto">${hibernate.hbm2ddl.auto}  </prop>
+                  <prop key="hibernate.current_session_context_class">${hibernate.current_session_context_class}</prop>    
+	        </props>
+	      </property>
+	</bean>
+	
+	 <bean class="org.springframework.orm.hibernate3.HibernateTransactionManager" id="hibernateTransactionManager">
+		<property name="sessionFactory" ref="sessionFactory"></property>
+	 </bean>
+	<!-- Database Configuration End Here-->
+	
+## In Class
+	import org.springframework.beans.factory.annotation.Autowired;
+	import org.springframework.stereotype.Repository;
+	
+	@Repository("baseDao") 
+	public class BaseDaoImpl<T, PK extends Serializable> implements IBaseDao<T, PK> {
+
+    private static EligibltyLogger LOGGER = new EligibltyLogger(BaseDaoImpl.class);
+
+    @Autowired  
+    private SessionFactory sessionFactory;  
+
+#	In Methods()
+		Session session=sessionFactory.getCurrentSession();
+	
+## In database.properties file:	
+	database.driver=org.postgresql.Driver
+	database.url=jdbc:postgresql://localhost:5433/feb_26
+	database.user=postgres
+	database.password=Chetu@123
+	hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+	hibernate.show_sql=true
+	hibernate.hbm2ddl.auto=update
+	hibernate.current_session_context_class=thread
+	
+	
